@@ -6,8 +6,8 @@
 // NOTE: This file wires up the API and message protocol. physics.worker.js will contain placeholder logic initially.
 
 import * as THREE from 'three';
-import PhysicsRapierWorkerConstructor from './physicsRapier.worker.js?worker&inline'
-import PhysicsHelperWorkerConstructor from './physicsHelper.worker.js?worker&inline'
+import PhysicsRapierWorkerConstructor from './physicsRapier.worker.js?worker'
+import PhysicsHelperWorkerConstructor from './physicsHelper.worker.js?worker'
 
 function normalizeVector3(input, fallback = [0, -9.81, 0]) {
   if (!input) return fallback.slice();
@@ -138,7 +138,7 @@ export class Physics {
     // when the worker loads a .wasm relative to its own module). Fall back to the standard emitted module worker.
     // Always emit a separate module worker so locateFile(import.meta.url) can resolve the .wasm asset correctly.
     // Inlining workers breaks relative URL resolution for WASM in many bundlers.
-    this.worker = new PhysicsRapierWorkerConstructor();
+    this.worker = new PhysicsRapierWorkerConstructor({ type: 'module' });
     //this.worker = new Worker(new URL('./physicsRapier.worker.js', import.meta.url), { type: 'module' });
     this._msgId = 0;
     this._pending = new Map();
@@ -492,16 +492,87 @@ export class Physics {
   }
 
   /**
-   * applyForce({ bodyId, force, worldPoint?, wake = true, impulse = false })
+   * applyForce({ bodyId, force, worldPoint?, wake = true, impulse = false, resetForces = false, resetTorques = false })
    */
-  applyForce({ bodyId, force, worldPoint, wake = true, impulse = false }) {
+  applyForce({ bodyId, force, worldPoint, wake = true, impulse = false, resetForces = false, resetTorques = false }) {
     if (!this.rigidBodies.has(bodyId)) {
       console.warn(`applyForce: unknown bodyId ${bodyId}`);
       return;
     }
     const f = normalizeVector3(force, [0, 0, 0]);
     const p = worldPoint ? normalizeVector3(worldPoint, [0, 0, 0]) : undefined;
-    this._post({ type: 'applyForce', id: bodyId, force: f, point: p, wake: !!wake, impulse: !!impulse });
+    this._post({
+      type: 'applyForce',
+      id: bodyId,
+      force: f,
+      point: p,
+      wake: !!wake,
+      impulse: !!impulse,
+      resetForces: !!resetForces,
+      resetTorques: !!resetTorques
+    });
+  }
+
+  /**
+   * applyForces({ bodyId, forces: [[x,y,z],...], worldPoints?: [ [x,y,z]|null ], wake=true, impulse=false, resetForces=false, resetTorques=false })
+   */
+  applyForces({ bodyId, forces, worldPoints, wake = true, impulse = false, resetForces = false, resetTorques = false }) {
+    if (!this.rigidBodies.has(bodyId)) {
+      console.warn(`applyForces: unknown bodyId ${bodyId}`);
+      return;
+    }
+    if (!Array.isArray(forces)) return;
+    const fs = forces.map(f => normalizeVector3(f, [0, 0, 0]));
+    const pts = Array.isArray(worldPoints) ? worldPoints.map(p => p ? normalizeVector3(p, [0, 0, 0]) : undefined) : [];
+    this._post({
+      type: 'applyForces',
+      id: bodyId,
+      forces: fs,
+      points: pts,
+      wake: !!wake,
+      impulse: !!impulse,
+      resetForces: !!resetForces,
+      resetTorques: !!resetTorques
+    });
+  }
+
+  /**
+   * applyTorque({ bodyId, torque, wake = true, impulse = false, resetTorques = false })
+   */
+  applyTorque({ bodyId, torque, wake = true, impulse = false, resetTorques = false }) {
+    if (!this.rigidBodies.has(bodyId)) {
+      console.warn(`applyTorque: unknown bodyId ${bodyId}`);
+      return;
+    }
+    const t = normalizeVector3(torque, [0, 0, 0]);
+    this._post({
+      type: 'applyTorque',
+      id: bodyId,
+      torque: t,
+      wake: !!wake,
+      impulse: !!impulse,
+      resetTorques: !!resetTorques
+    });
+  }
+
+  /**
+   * applyTorques({ bodyId, torques: [[x,y,z],...], wake=true, impulse=false, resetTorques=false })
+   */
+  applyTorques({ bodyId, torques, wake = true, impulse = false, resetTorques = false }) {
+    if (!this.rigidBodies.has(bodyId)) {
+      console.warn(`applyTorques: unknown bodyId ${bodyId}`);
+      return;
+    }
+    if (!Array.isArray(torques)) return;
+    const ts = torques.map(t => normalizeVector3(t, [0, 0, 0]));
+    this._post({
+      type: 'applyTorques',
+      id: bodyId,
+      torques: ts,
+      wake: !!wake,
+      impulse: !!impulse,
+      resetTorques: !!resetTorques
+    });
   }
 
   /**
@@ -728,7 +799,7 @@ export class Physics {
 
   _ensureHelperWorker() {
     if (this.helperWorker) return;
-    this.helperWorker = new PhysicsHelperWorkerConstructor();
+    this.helperWorker = new PhysicsHelperWorkerConstructor({ type: 'module' });
     this.helperWorker.onmessage = this._onHelperMessage;
     this.helperWorker.onerror = (e) => {
       console.error('Physics helper worker error:', e?.message || e);

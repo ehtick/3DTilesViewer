@@ -23,8 +23,27 @@ console.log(rotationMatrix);
 
 
 const sim = new Physics({
-    gravity: [0, 0, 0]
+    gravity: [205, 0, 0]
 })
+
+/* // Periodic physics raycast from camera forward, every 100ms — logs hits
+setInterval(() => {
+    try {
+        const origin = [camera.position.x, camera.position.y, camera.position.z];
+        const dirVec = new THREE.Vector3();
+        camera.getWorldDirection(dirVec).normalize();
+        const direction = [dirVec.x, dirVec.y, dirVec.z];
+        sim.raycast({ origin, direction, maxToi: 1e6 }).then((res) => {
+            if (res && res.hits && res.hits.length) {
+                console.log('Physics.raycast hits:', res.hits);
+            }
+        }).catch(err => {
+            console.warn('Physics.raycast error:', err);
+        });
+    } catch (e) {
+        console.warn('Periodic raycast failed:', e);
+    }
+}, 100); */
 let paused = false;
 
 const scene = initScene();
@@ -240,7 +259,7 @@ function pollGPUTimers() {
         gpuPolledFrames++;
         if (gpuPolledFrames >= GPU_LOG_INTERVAL) {
             const avg = gpuSamples ? (gpuAccumMs / gpuSamples) : 0;
-            //console.log(`GPU time avg over ${gpuSamples} samples: ${avg.toFixed(3)} ms (polled ${gpuPolledFrames} frames)`);
+            console.log(`GPU time avg over ${gpuSamples} samples: ${avg.toFixed(3)} ms (polled ${gpuPolledFrames} frames)`);
             gpuAccumMs = 0;
             gpuSamples = 0;
             gpuPolledFrames = 0;

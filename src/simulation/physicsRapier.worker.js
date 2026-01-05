@@ -345,7 +345,7 @@ function applyExternalForces(dt) {
     const p = rb.translation();
     const g = computeGeocentricAt(p);
     const f = { x: g.x * mass, y: g.y * mass, z: g.z * mass };
-    rb.applyForce(f, true);
+    rb.addForce(f, true);
   }
 }
 
@@ -373,7 +373,7 @@ function raycast(origin, dir, maxToi = 1e6) {
   const hit = world.castRay(ray, maxToi, true);
   if (!hit) return { hits: [] };
 
-  const toi = hit.toi;
+  const toi = hit.timeOfImpact;
   const point = ray.pointAt(toi);
   const normal = hit.normal;
   // Find collider id
@@ -395,7 +395,6 @@ function raycast(origin, dir, maxToi = 1e6) {
     hits: [{
       toi,
       point: [point.x, point.y, point.z],
-      normal: [normal.x, normal.y, normal.z],
       colliderId,
       bodyId
     }]
@@ -546,19 +545,152 @@ async function onMessage(e) {
         const force = v3(msg.force || [0, 0, 0]);
         const wake = msg.wake !== false;
 
+        // Optional resets
+        if (msg.resetForces) {
+          if (typeof rb.clearForces === 'function') rb.clearForces();
+          else if (typeof rb.resetForces === 'function') rb.resetForces();
+        }
+        if (msg.resetTorques) {
+          if (typeof rb.clearTorques === 'function') rb.clearTorques();
+          else if (typeof rb.resetTorques === 'function') rb.resetTorques();
+        }
+
         if (impulse) {
-          if (msg.point && typeof rb.applyImpulseAtPoint === 'function') {
-            rb.applyImpulseAtPoint(force, v3(msg.point), wake);
-          } else {
-            rb.applyImpulse(force, wake);
+          if (msg.point && typeof rb.addImpulseAtPoint === 'function') {
+            rb.addImpulseAtPoint(force, v3(msg.point), wake);
+          } else if (typeof rb.addImpulse === 'function') {
+            rb.addImpulse(force, wake);
           }
         } else {
-          if (msg.point && typeof rb.applyForceAtPoint === 'function') {
-            rb.applyForceAtPoint(force, v3(msg.point), wake);
-          } else {
-            rb.applyForce(force, wake);
+          if (msg.point && typeof rb.addForceAtPoint === 'function') {
+            rb.addForceAtPoint(force, v3(msg.point), wake);
+          } else if (typeof rb.addForce === 'function') {
+            rb.addForce(force, wake);
           }
         }
+        _ack({ ok: true });
+        break;
+      }
+
+      case 'applyForces': {
+        await ensureRapier();
+        const bodyId = msg.id;
+        const rb = bodies.get(bodyId);
+        if (!rb) { ack(id, { ok: false, reason: 'unknown body' }); break; }
+
+        const impulse = !!msg.impulse;
+        const wake = msg.wake !== false;
+        const forces = Array.isArray(msg.forces) ? msg.forces : [];
+        const points = Array.isArray(msg.points) ? msg.points : [];
+
+        // Optional resets
+        if (msg.resetForces) {
+          if (typeof rb.clearForces === 'function') rb.clearForces();
+          else if (typeof rb.resetForces === 'function') rb.resetForces();
+        }
+        if (msg.resetTorques) {
+          if (typeof rb.clearTorques === 'function') rb.clearTorques();
+          else if (typeof rb.resetTorques === 'function') rb.resetTorques();
+        }
+
+        try {
+          for (let i = 0; i < forces.length; ++i) {
+            const f = v3(forces[i] || [0, 0, 0]);
+            const pt = points[i] ? v3(points[i]) : null;
+            if (impulse) {
+              if (pt && typeof rb.addImpulseAtPoint === 'function') rb.addImpulseAtPoint(f, pt, wake);
+              else if (typeof rb.addImpulse === 'function') rb.addImpulse(f, wake);
+            } else {
+              if (pt && typeof rb.addForceAtPoint === 'function') rb.addForceAtPoint(f, pt, wake);
+              else if (typeof rb.addForce === 'function') rb.addForce(f, wake);
+            }
+          }
+          _ack({ ok: true, applied: forces.length });
+        } catch (err) {
+          _nack(err);
+        }
+        break;
+      }
+
+      case 'applyTorque': {
+        await ensureRapier();
+        const bodyId = msg.id;
+        const rb = bodies.get(bodyId);
+        if (!rb) { ack(id, { ok: false, reason: 'unknown body' }); break; }
+
+        const impulse = !!msg.impulse;
+        const torque = v3(msg.torque || [0, 0, 0]);
+        const wake = msg.wake !== false;
+
+        if (msg.resetTorques) {
+          if (typeof rb.clearTorques === 'function') rb.clearTorques();
+          else if (typeof rb.resetTorques === 'function') rb.resetTorques();
+        }
+
+        try {
+          if (impulse) {
+            if (typeof rb.addTorqueImpulse === 'function') rb.addTorqueImpulse(torque, wake);
+            else if (typeof rb.addTorque === 'function') rb.addTorque(torque, wake);
+          } else {
+            if (typeof rb.addTorque === 'function') rb.addTorque(torque, wake);
+          }
+          _ack({ ok: true });
+        } catch (err) {
+          _nack(err);
+        }
+        break;
+      }
+
+      case 'applyTorques': {
+        await ensureRapier();
+        const bodyId = msg.id;
+        const rb = bodies.get(bodyId);
+        if (!rb) { ack(id, { ok: false, reason: 'unknown body' }); break; }
+
+        const impulse = !!msg.impulse;
+        const torques = Array.isArray(msg.torques) ? msg.torques : [];
+        const wake = msg.wake !== false;
+
+        if (msg.resetTorques) {
+          if (typeof rb.clearTorques === 'function') rb.clearTorques();
+          else if (typeof rb.resetTorques === 'function') rb.resetTorques();
+        }
+
+        try {
+          for (let i = 0; i < torques.length; ++i) {
+            const t = v3(torques[i] || [0, 0, 0]);
+            if (impulse) {
+              if (typeof rb.addTorqueImpulse === 'function') rb.addTorqueImpulse(t, wake);
+              else if (typeof rb.addTorque === 'function') rb.addTorque(t, wake);
+            } else {
+              if (typeof rb.addTorque === 'function') rb.addTorque(t, wake);
+            }
+          }
+          _ack({ ok: true, applied: torques.length });
+        } catch (err) {
+          _nack(err);
+        }
+        break;
+      }
+
+      case 'resetForces': {
+        await ensureRapier();
+        const bodyId = msg.id;
+        const rb = bodies.get(bodyId);
+        if (!rb) { ack(id, { ok: false, reason: 'unknown body' }); break; }
+        if (typeof rb.clearForces === 'function') rb.clearForces();
+        else if (typeof rb.resetForces === 'function') rb.resetForces();
+        _ack({ ok: true });
+        break;
+      }
+
+      case 'resetTorques': {
+        await ensureRapier();
+        const bodyId = msg.id;
+        const rb = bodies.get(bodyId);
+        if (!rb) { ack(id, { ok: false, reason: 'unknown body' }); break; }
+        if (typeof rb.clearTorques === 'function') rb.clearTorques();
+        else if (typeof rb.resetTorques === 'function') rb.resetTorques();
         _ack({ ok: true });
         break;
       }

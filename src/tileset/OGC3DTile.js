@@ -2034,7 +2034,7 @@ class OGC3DTile extends THREE.Object3D {
         }
     
         if (effectiveShape === "mesh" || effectiveShape === "hull") {
-            console.log(effectiveShape+"  "+this.level)
+            //console.log(effectiveShape+"  "+this.level)
             // Make sure no stray bounds collider remains if shape switched
             detachBoundsCollider();
     
